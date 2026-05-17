@@ -8,7 +8,7 @@ source "$SCRIPT_DIR/../lib/discover-files.sh"
 
 fail() { echo "FAIL: $1"; exit 1; }
 
-# Test 1: MELPA_CHECK_FILES override is returned verbatim
+# Test 1: MELPA_CHECK_FILES override words are emitted one per line
 result=$(MELPA_CHECK_FILES="a.el b.el" melpa_discover_files)
 expected=$'a.el\nb.el'
 [[ "$result" == "$expected" ]] || fail "override returned: $result"
