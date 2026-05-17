@@ -76,8 +76,20 @@ Returns absolute file name, or nil."
              (candidate (expand-file-name (concat base ".el") cwd)))
         (and (file-exists-p candidate) candidate)))
      (t
-      (let ((found nil))
-        (dolist (f (sort (directory-files cwd t "\\.el\\'") #'string<))
+      ;; Exclude the same files lib/discover-files.sh excludes, plus Emacs
+      ;; lockfile symlinks (.#foo.el).  Otherwise flycheck temp buffers and
+      ;; lockfiles can be selected as the project's main file.
+      (let* ((candidates (seq-remove
+                          (lambda (f)
+                            (let ((b (file-name-nondirectory f)))
+                              (or (string-prefix-p "flycheck_" b)
+                                  (string-prefix-p ".#" b)
+                                  (string-match-p
+                                   "-\\(test\\|tests\\|pkg\\|autoloads\\)\\.el\\'"
+                                   b))))
+                          (directory-files cwd t "\\.el\\'")))
+             (found nil))
+        (dolist (f (sort candidates #'string<))
           (when (and (not found)
                      (with-temp-buffer
                        (insert-file-contents f nil 0 200)
