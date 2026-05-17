@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+#MISE description="Run checkdoc on *.el files; non-zero on any issue"
+set -euo pipefail
+
+SHARED="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=../lib/discover-files.sh
+source "$SHARED/lib/discover-files.sh"
+
+files=$(melpa_discover_files)
+if [[ -z "$files" ]]; then
+  echo "checkdoc: no .el files found" >&2
+  exit 1
+fi
+
+# shellcheck disable=SC2086
+"${EMACS:-emacs}" -Q --batch \
+  -l "$SHARED/lib/batch-init.el" \
+  --eval "
+(progn
+  (require 'checkdoc)
+  (let ((had-issues nil))
+    (dolist (f command-line-args-left)
+      (unless (string= f \"--\")
+        (let ((buf (find-file-noselect f)))
+          (with-current-buffer buf
+            (let ((checkdoc-diagnostic-buffer \"*checkdoc-batch*\"))
+              (with-current-buffer (get-buffer-create checkdoc-diagnostic-buffer)
+                (let ((inhibit-read-only t)) (erase-buffer)))
+              (checkdoc-current-buffer t)
+              (with-current-buffer checkdoc-diagnostic-buffer
+                (let ((issues (save-excursion
+                                (goto-char (point-min))
+                                (let (lines)
+                                  (while (re-search-forward \"^.+:[0-9]+:.*$\" nil t)
+                                    (push (match-string 0) lines))
+                                  (nreverse lines)))))
+                  (when issues
+                    (setq had-issues t)
+                    (princ (format \"--- %s ---\n\" f))
+                    (dolist (l issues) (princ (concat l \"\n\")))
+                    (princ \"\n\")))))))))
+    (kill-emacs (if had-issues 1 0))))" \
+  -- $files
