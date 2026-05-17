@@ -1,0 +1,125 @@
+#+TITLE: mise-melpa-checks
+#+OPTIONS: toc:nil
+
+Reusable [[https://mise.jdx.dev][mise]] tasks for the three pre-submission
+checks the [[https://github.com/melpa/melpa/blob/master/.github/PULL_REQUEST_TEMPLATE.md][MELPA PR template]] requires:
+
+- byte-compile cleanly (warnings treated as errors)
+- =package-lint= (latest)
+- =M-x checkdoc=
+
+* Quick start
+
+In each Emacs-package repo's =mise.toml=:
+
+#+BEGIN_SRC toml
+[task_config]
+includes = [
+  "mise-tasks",                                                                  # local file-tasks; omit if project has none
+  "git::https://github.com/djgoku/mise-melpa-checks.git//tasks?ref=v0.1.0"
+]
+#+END_SRC
+
+Then:
+
+#+BEGIN_SRC sh
+mise run melpa-check        # runs all three
+mise run byte-compile       # individual checks
+mise run package-lint
+mise run checkdoc
+#+END_SRC
+
+First run will be slow (~30s) as it downloads the MELPA archive and
+=package-lint= into a shared cache under =$MISE_CACHE_DIR/melpa-checks/=.
+Subsequent runs are fast.
+
+* What each task does
+
+| Task           | What it runs                                                            |
+|----------------+-------------------------------------------------------------------------|
+| =byte-compile= | =emacs -Q --batch -f batch-byte-compile= with =byte-compile-error-on-warn t= |
+| =package-lint= | =emacs -Q --batch -f package-lint-batch-and-exit=                       |
+| =checkdoc=     | =emacs -Q --batch=, calls =checkdoc-current-buffer= per file            |
+| =melpa-check=  | Umbrella; runs the three above sequentially (NOT mise =depends=, to avoid cache races) |
+
+All use the same ephemeral Emacs setup in =lib/batch-init.el= (your daily
+config is never loaded).
+
+* File discovery
+
+By default, each task checks =*.el= in the repo root, excluding:
+
+- =*-test.el=, =*-tests.el=
+- =*-pkg.el=
+- =*-autoloads.el=
+- =flycheck_*.el=
+
+Override with environment variables in your project's =mise.toml=:
+
+#+BEGIN_SRC toml
+[env]
+MELPA_CHECK_FILES = "sops.el"          # explicit file list
+MELPA_CHECK_MAIN  = "sops.el"          # main file for Package-Requires parsing
+MELPA_CHECK_EMACS_DIR = ".mise/elpa"   # override cache location
+#+END_SRC
+
+* Dependencies
+
+If your package declares =Package-Requires= (e.g., =((emacs "25.2") (s "1.13.0"))=),
+the tasks auto-install non-emacs deps into the shared cache before running
+byte-compile, so cross-package =require= forms resolve.
+
+Main-file detection order:
+
+1. =$MELPA_CHECK_MAIN= if set
+2. =<basename-of-cwd>.el= (e.g. =sops.el= in a directory called =sops.el=)
+3. The first =*.el= file with a =;;; foo.el --- summary= header
+   (excluding test/pkg/autoloads/flycheck/lockfile files)
+4. Skip dep install with a warning
+
+* Emacs binary
+
+By default, tasks invoke =emacs= from your =$PATH=. Override with the =EMACS=
+environment variable to point at a specific build:
+
+#+BEGIN_SRC sh
+EMACS=/path/to/your/emacs mise run melpa-check
+#+END_SRC
+
+Or in your project's =mise.toml=:
+
+#+BEGIN_SRC toml
+[env]
+EMACS = "/path/to/your/emacs"
+#+END_SRC
+
+* Caching
+
+- Cloned tasks: =$MISE_CACHE_DIR/remote-git-tasks-cache/=
+  Invalidate by bumping =?ref=...= or =mise cache clear=.
+- Package archive + installed deps: =$MISE_CACHE_DIR/melpa-checks/=
+  Archive contents refresh automatically if older than 24h.
+  Manual nuke: =rm -rf $MISE_CACHE_DIR/melpa-checks/=.
+
+* Versioning
+
+Pin to a tag (=?ref=v0.1.0=) for reproducibility. Use =?ref=main= only when
+you want rolling updates. During development of this repo itself, point at a
+local clone: =git::file:///path/to/mise-melpa-checks//tasks?ref=main=.
+
+* Caveats
+
+mise's =task_config.includes= with =git::= URLs is marked /experimental/.
+If the syntax breaks in a future mise release, fall back to adding this
+repo as a git submodule and pointing =includes= at the local path; the task
+scripts themselves are stable.
+
+* Development
+
+#+BEGIN_SRC sh
+EMACS=/path/to/your/emacs ./tests/run-tests.sh
+#+END_SRC
+
+Runs the unit tests for the lib helpers and the integration tests over both
+fixtures (=tests/fixtures/good-package/= which should pass all checks, and
+=tests/fixtures/bad-package/= which should fail all three).
