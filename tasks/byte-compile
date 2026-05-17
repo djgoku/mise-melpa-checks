@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+#MISE description="Byte-compile *.el files cleanly (warnings as errors)"
+set -euo pipefail
+
+SHARED="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=../lib/discover-files.sh
+source "$SHARED/lib/discover-files.sh"
+
+files=$(melpa_discover_files)
+if [[ -z "$files" ]]; then
+  echo "byte-compile: no .el files found" >&2
+  exit 1
+fi
+
+# shellcheck disable=SC2086
+"${EMACS:-emacs}" -Q --batch \
+  -l "$SHARED/lib/batch-init.el" \
+  --eval "(setq byte-compile-error-on-warn t)" \
+  -L . \
+  -f batch-byte-compile \
+  $files
