@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+#MISE description="Run all MELPA pre-submission checks: byte-compile + package-lint + checkdoc"
+set -euo pipefail
+
+# Sequential invocation (NOT mise's `depends`) — `depends` runs siblings in
+# parallel, which races on the shared package-user-dir cache when all three
+# tasks try to install package-lint into a cold cache at the same time.
+# Sequential ordering serializes the cache writes for free.
+SHARED="$(cd "$(dirname "$0")/.." && pwd)"
+
+fail=0
+for check in byte-compile package-lint checkdoc; do
+  if ! "$SHARED/tasks/$check"; then
+    fail=1
+    echo "melpa-check: $check FAILED" >&2
+  fi
+done
+
+if [[ "$fail" -ne 0 ]]; then
+  echo "melpa-check: one or more checks failed" >&2
+  exit 1
+fi
+echo "melpa-check: all 3 checks passed"
