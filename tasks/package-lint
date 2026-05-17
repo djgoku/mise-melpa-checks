@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+#MISE description="Run package-lint over *.el files; non-zero on any finding"
+set -euo pipefail
+
+SHARED="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=../lib/discover-files.sh
+source "$SHARED/lib/discover-files.sh"
+
+files=$(melpa_discover_files)
+if [[ -z "$files" ]]; then
+  echo "package-lint: no .el files found" >&2
+  exit 1
+fi
+
+# shellcheck disable=SC2086
+"${EMACS:-emacs}" -Q --batch \
+  -l "$SHARED/lib/batch-init.el" \
+  --eval "(require 'package-lint)" \
+  -f package-lint-batch-and-exit \
+  $files
