@@ -1,0 +1,28 @@
+name: release
+
+on:
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: write
+
+# Don't let two merges race on tagging.
+concurrency: release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # full history + tags so the bump and commit list work
+      - uses: jdx/mise-action@v3
+      - name: Bump CHANGELOG, commit, tag, and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mise run release
+          git push origin HEAD:main
+          git push origin "$(git tag --list 'v*' --sort=-v:refname | head -n1)"

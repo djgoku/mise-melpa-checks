@@ -11,3 +11,51 @@ fi
 [tasks.test]
 description = "Run the full test suite (assumes emacs is already installed)"
 run = "./tests/run-tests.sh"
+
+[tasks.release]
+description = "Bump patch version: update CHANGELOG.md, commit, and tag vX.Y.Z+1"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Latest v* tag, version-sorted. Default to v0.0.0 so the first release is v0.0.1.
+last="$(git tag --list 'v*' --sort=-v:refname | head -n1)"
+last="${last:-v0.0.0}"
+
+# Bump the patch (last) component only: v0.0.1 -> v0.0.2.
+IFS='.' read -r major minor patch <<< "${last#v}"
+next="v${major}.${minor}.$((patch + 1))"
+
+# Commits since the last tag (all history if none), excluding prior release commits.
+if [ "$last" = "v0.0.0" ]; then range="HEAD"; else range="${last}..HEAD"; fi
+notes="$(git log --pretty='- %s (%h)' --invert-grep --grep='^chore: release ' "$range")"
+
+if [ -z "$notes" ]; then
+  echo "release: no releasable commits since $last; nothing to do" >&2
+  exit 0
+fi
+
+date="$(date +%Y-%m-%d)"
+
+# Prepend a new section to CHANGELOG.md (created with a header if missing).
+existing=""
+[ -f CHANGELOG.md ] && existing="$(tail -n +2 CHANGELOG.md)"
+{
+  printf '# Changelog\n\n'
+  printf '## %s - %s\n\n%s\n' "$next" "$date" "$notes"
+  [ -n "$existing" ] && printf '%s\n' "$existing"
+} > CHANGELOG.md
+
+printf 'Releasing %s (previous: %s)\n\n%s\n' "$next" "$last" "$notes"
+
+# Commit the changelog, then tag that commit. Push is left to the caller
+# (you locally, or the release workflow in CI).
+git add CHANGELOG.md
+git commit -m "chore: release $next"
+printf '%s\n\n%s\n' "$next" "$notes" | git tag -a "$next" -F -
+echo
+echo "Created commit + tag $next. Push with: git push origin HEAD && git push origin $next"
+'''
+
+[tools]
+"conda:socat" = "latest"
